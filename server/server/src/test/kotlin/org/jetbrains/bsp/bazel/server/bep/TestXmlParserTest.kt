@@ -746,6 +746,132 @@ class TestXmlParserTest {
   }
 
   @Test
+  fun `jest system-out - success failure and skipped`(
+    @TempDir tempDir: Path,
+  ) {
+    val sampleContents =
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <testsuites>
+        <testsuite name="sample/test" tests="1" failures="0" errors="1">
+          <testcase name="sample/test" status="run" duration="0" time="0"><error message="exited with error code 1"></error></testcase>
+          <system-out>
+      <![CDATA[Executing tests from //sample:test
+      -----------------------------------------------------------------------------
+      PASS node src/example/__tests__/sample.node.ts
+        loading state
+          ✕ renders (8 ms)
+        success state
+          ✓ renders (1 ms)
+        skipped state
+          ○ renders
+
+      Test Suites: 1 failed, 1 total
+      Tests:       1 failed, 1 skipped, 1 passed, 3 total
+      Snapshots:   0 total
+      Time:        1.315 s
+      Ran all test suites matching /src\/example\/__tests__\/sample.node.ts/i.]]>
+          </system-out>
+        </testsuite>
+      </testsuites>
+      """.trimIndent()
+
+    val client = MockBuildClient()
+    val notifier = BspClientTestNotifier(client, "sample-origin")
+
+    TestXmlParser(notifier).parseAndReport(writeTempFile(tempDir, sampleContents))
+
+    client.taskStartCalls.size shouldBe 3
+
+    val testFinishes = client.taskFinishCalls.filter { it.data is TestFinish }
+    testFinishes.map { (it.data as TestFinish).displayName } shouldContainExactlyInAnyOrder
+      listOf("renders", "renders", "renders")
+
+    testFinishes.map {
+      val data = it.data as TestFinish
+      val details = data.data as JUnitStyleTestCaseData
+      details.className to data.status
+    } shouldContainExactlyInAnyOrder
+      listOf(
+        "loading state renders" to TestStatus.FAILED,
+        "success state renders" to TestStatus.PASSED,
+        "skipped state renders" to TestStatus.SKIPPED,
+      )
+  }
+
+  @Test
+  fun `jest system-out - ignores generic target testcase`(
+    @TempDir tempDir: Path,
+  ) {
+    val sampleContents =
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <testsuites>
+        <testsuite name="sample/test" tests="1" failures="0" errors="0">
+          <testcase name="sample/test" status="run" duration="0" time="0"></testcase>
+          <system-out>
+      <![CDATA[PASS node src/example/__tests__/sample.node.ts
+        sample suite
+          ✓ child test (1 ms)
+
+      Test Suites: 1 passed, 1 total
+      Tests:       1 passed, 1 total
+      Time:        1.315 s]]>
+          </system-out>
+        </testsuite>
+      </testsuites>
+      """.trimIndent()
+
+    val client = MockBuildClient()
+    val notifier = BspClientTestNotifier(client, "sample-origin")
+
+    TestXmlParser(notifier).parseAndReport(writeTempFile(tempDir, sampleContents))
+
+    val testFinishes = client.taskFinishCalls.filter { it.data is TestFinish }
+
+    testFinishes.map { (it.data as TestFinish).displayName } shouldContainExactlyInAnyOrder listOf("child test")
+    val details = (testFinishes.single().data as TestFinish).data as JUnitStyleTestCaseData
+    details.className shouldBe "sample suite child test"
+  }
+
+  @Test
+  fun `jest system-out - ignores stdout bullet lines`(
+    @TempDir tempDir: Path,
+  ) {
+    val sampleContents =
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <testsuites>
+        <testsuite name="sample/test" tests="1" failures="0" errors="0">
+          <testcase name="sample/test" status="run" duration="0" time="0"></testcase>
+          <system-out>
+      <![CDATA[PASS node src/example/__tests__/sample.node.ts
+        sample suite
+          ✓ child test (1 ms)
+
+        console output
+          - first logged item
+          - second logged item
+
+      Test Suites: 1 passed, 1 total
+      Tests:       1 passed, 1 total
+      Time:        1.315 s]]>
+          </system-out>
+        </testsuite>
+      </testsuites>
+      """.trimIndent()
+
+    val client = MockBuildClient()
+    val notifier = BspClientTestNotifier(client, "sample-origin")
+
+    TestXmlParser(notifier).parseAndReport(writeTempFile(tempDir, sampleContents))
+
+    val testFinishes = client.taskFinishCalls.filter { it.data is TestFinish }
+
+    testFinishes.map { (it.data as TestFinish).displayName } shouldContainExactlyInAnyOrder listOf("child test")
+  }
+
+  @Test
   fun `junit5 - all failure, multiple testcase`(
     @TempDir tempDir: Path,
   ) {

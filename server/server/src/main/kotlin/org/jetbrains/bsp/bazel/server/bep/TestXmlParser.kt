@@ -271,6 +271,9 @@ private class FallbackTestXmlParser(private var bspClientTestNotifier: BspClient
     if (containsJunit5 == true) {
       val parser = Junit5TestVisualOutputParser(bspClientTestNotifier)
       parser.processTestOutput(suite.systemOut)
+    } else if (suite.systemOut?.let(JestTestOutputParser::textContainsJestOutput) == true) {
+      val parser = JestTestOutputParser(bspClientTestNotifier)
+      parser.processTestOutput(suite.systemOut)
     } else {
       defaultIncompleteInfoSuiteProcessing(suite)
     }
